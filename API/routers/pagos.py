@@ -11,6 +11,10 @@ from Services.pagos_service import (
     verificar_saldo
 )
 from Services.auth_service import obtener_usuario
+import logging
+
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pagos", tags=["Pagos"])
 
@@ -20,11 +24,27 @@ def crear_pago_endpoint(
     usuario_id: int,
     db: Session = Depends(get_db)
 ):
+    """Crea un pago programado y envía correo de confirmación automáticamente"""
+    
+    # Verificar que el usuario existe
     usuario = obtener_usuario(db, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    return crear_pago(db, pago, usuario_id)
+    try:
+        # Crear el pago (incluye envío automático de correo de confirmación)
+        pago_creado = crear_pago(db, pago, usuario_id)
+        
+        logger.info(f"Pago programado creado exitosamente: {pago_creado.nombre} para usuario {usuario.nombre}")
+        
+        return pago_creado
+        
+    except Exception as e:
+        logger.error(f"Error creando pago programado para usuario {usuario_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error interno al crear el pago programado: {str(e)}"
+        )
 
 @router.get("/", response_model=list[PagoProgramado])
 def listar_pagos(usuario_id: int, db: Session = Depends(get_db)):
