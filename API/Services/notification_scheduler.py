@@ -162,14 +162,45 @@ def detener_scheduler():
     notification_scheduler.detener()
 
 def ejecutar_notificaciones_ahora():
-    """Ejecuta las notificaciones inmediatamente (útil para testing)"""
+    """Ejecuta pagos programados y crea transacciones automáticas."""
+    db: Session = SessionLocal()
     try:
-        logging.info("Ejecutando notificaciones manualmente...")
-        notification_scheduler.ejecutar_notificaciones_diarias()
+        hoy = date.today()
+        pagos = db.query(PagoProgramado).filter(
+            PagoProgramado.fecha <= hoy,
+            PagoProgramado.estado == "pendiente"
+        ).all()
+
+        if not pagos:
+            logger.info("No hay pagos programados pendientes para hoy.")
+            return True
+
+        for pago in pagos:
+            # 1️⃣ Marcar pago como completado
+            pago.estado = "pagado"
+
+            # 2️⃣ Crear transacción automáticamente
+            nueva_transaccion = Transaccion(
+                monto=pago.monto,
+                tipo="gasto",
+                fecha=hoy,
+                descripcion=f"Pago programado: {pago.nombre}",
+                usuario_id=pago.usuario_id,
+                categoria_id=pago.categoria_id
+            )
+            db.add(nueva_transaccion)
+
+            logger.info(f"Pago '{pago.nombre}' ejecutado y registrado como transacción.")
+
+        db.commit()
         return True
+
     except Exception as e:
-        logging.error(f"Error ejecutando notificaciones manuales: {e}")
+        logger.error(f"Error ejecutando notificaciones: {e}")
+        db.rollback()
         return False
+    finally:
+        db.close()
 
 # Función para uso en desarrollo/testing
 if __name__ == "__main__":
